@@ -1,0 +1,8 @@
+[extension]
+name = "cf-stack"
+description = "Manage CF stack install and upgrade workflows"
+
+[extension.auth]
+requires_token = true
+requires_org = true
+requires_install = true
