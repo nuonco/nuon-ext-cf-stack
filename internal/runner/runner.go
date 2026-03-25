@@ -103,6 +103,9 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 	}
 
 	var action string
+	applyMessage := fmt.Sprintf("CloudFormation update sent for stack %q. Applying...", meta.StackName)
+	_, _ = fmt.Fprintf(w, "%s\n", applyMessage)
+
 	apply := func(applyCtx context.Context) error {
 		var applyErr error
 		action, applyErr = applyStack(applyCtx, awsConfig, applyStackInput{
@@ -118,8 +121,7 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 	}
 
 	if opts.Watch {
-		message := fmt.Sprintf("CloudFormation update sent for stack %q. Applying...", meta.StackName)
-		if err := watch.Run(ctx, w, message, apply); err != nil {
+		if err := watch.Run(ctx, w, applyMessage, apply); err != nil {
 			return err
 		}
 	} else {
@@ -128,14 +130,17 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 		}
 	}
 
+	stackURL := stackConsoleURL(meta.Region, meta.StackName)
+
 	_, _ = fmt.Fprintf(
 		w,
-		"%s %s stack %q in %s (template: %s)\n",
+		"operation: %s\nresult: %s\nstack: %q\nregion: %s\ntemplate: %s\nstack_url: %s\n",
 		operation,
 		action,
 		meta.StackName,
 		meta.Region,
 		meta.TemplateURL,
+		stackURL,
 	)
 
 	return nil
@@ -272,6 +277,27 @@ func quickCreateValue(quickLinkURL, key string) string {
 	}
 
 	return strings.TrimSpace(values.Get(key))
+}
+
+func stackConsoleURL(region, stackName string) string {
+	cleanRegion := strings.TrimSpace(region)
+	cleanStackName := strings.TrimSpace(stackName)
+	if cleanRegion == "" || cleanStackName == "" {
+		return ""
+	}
+
+	fragmentParams := url.Values{}
+	fragmentParams.Set("filteringStatus", "active")
+	fragmentParams.Set("filteringText", cleanStackName)
+	fragmentParams.Set("hideStacks", "false")
+	fragmentParams.Set("viewNested", "true")
+
+	return fmt.Sprintf(
+		"https://%s.console.aws.amazon.com/cloudformation/home?region=%s#/stacks?%s",
+		cleanRegion,
+		url.QueryEscape(cleanRegion),
+		fragmentParams.Encode(),
+	)
 }
 
 func fetchTemplateParameterSet(ctx context.Context, templateURL string) (map[string]struct{}, error) {

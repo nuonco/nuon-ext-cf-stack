@@ -21,6 +21,18 @@ func TestQuickCreateValue(t *testing.T) {
 	}
 }
 
+func TestStackConsoleURL(t *testing.T) {
+	got := stackConsoleURL("us-east-1", "nuon-stack")
+	want := "https://us-east-1.console.aws.amazon.com/cloudformation/home?region=us-east-1#/stacks?filteringStatus=active&filteringText=nuon-stack&hideStacks=false&viewNested=true"
+	if got != want {
+		t.Fatalf("expected stack console url %q, got %q", want, got)
+	}
+
+	if got := stackConsoleURL("", "nuon-stack"); got != "" {
+		t.Fatalf("expected empty stack console url when region is empty, got %q", got)
+	}
+}
+
 func TestLatestInstallStackVersion(t *testing.T) {
 	versions := []*models.AppInstallStackVersion{
 		{ID: "old", CreatedAt: "2025-01-01T00:00:00Z"},

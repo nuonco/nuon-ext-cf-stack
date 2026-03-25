@@ -72,7 +72,6 @@ func (m model) View() tea.View {
 
 func Run(ctx context.Context, out io.Writer, message string, operation func(context.Context) error) error {
 	if !isInteractive() {
-		_, _ = fmt.Fprintf(out, "%s\n", message)
 		return operation(ctx)
 	}
 
