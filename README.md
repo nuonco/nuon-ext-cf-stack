@@ -3,7 +3,7 @@
 <p align="center">
   <a href="https://github.com/nuonco/nuon-ext-cf-stack/releases"><img src="https://img.shields.io/github/v/release/nuonco/nuon-ext-cf-stack?display_name=tag&amp;sort=semver" alt="Release"></a>
   <a href="https://go.dev/doc/devel/release"><img src="https://img.shields.io/badge/Go-1.25.0-00ADD8?logo=go&amp;logoColor=white" alt="Go Version"></a>
-  <a href="https://pkg.go.dev/github.com/nuonco/nuon-ext-cf-stack"><img src="https://img.shields.io/badge/module-github.com%2Fnuonco%2Fnuon--ext--api-2C6BED" alt="Go Module"></a>
+  <a href="https://pkg.go.dev/github.com/nuonco/nuon-ext-cf-stack"><img src="https://img.shields.io/badge/module-github.com%2Fnuonco%2Fnuon--ext--cf-stack-2C6BED" alt="Go Module"></a>
 </p>
 
 <p align="center">
@@ -69,7 +69,8 @@ If omitted, the extension uses default AWS credential/provider resolution.
 
 Use `--watch` to show a live spinner while CloudFormation applies stack changes.
 
-In non-interactive environments (`NUON_NO_TTY=true`, `NUON_NOTTY=true`, or `CI`), `--watch` automatically falls back to plain text progress output.
+In non-interactive environments (`NUON_NO_TTY=true`, `NUON_NOTTY=true`, or `CI`), `--watch` automatically falls back to
+plain text progress output.
 
 ### What the extension does
 
@@ -82,7 +83,8 @@ In non-interactive environments (`NUON_NO_TTY=true`, `NUON_NOTTY=true`, or `CI`)
    - optional `secrets.json`
    - role toggle params (`EnableRunnerMaintenance`, `EnableRunnerProvision`, `EnableRunnerDeprovision`)
 
-Input keys are only sent when they match an actual template parameter name (directly or via `Parameter<PascalCase>` mapping). Unmatched inputs are omitted.
+Input keys are only sent when they match an actual template parameter name (directly or via `Parameter<PascalCase>`
+mapping). Unmatched inputs are omitted.
 
 ### Debug logging
 
