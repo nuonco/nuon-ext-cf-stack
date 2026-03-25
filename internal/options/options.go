@@ -41,7 +41,7 @@ type CommonOptions struct {
 func BindCommonFlags(cmd *cobra.Command, opts *RawCommonOptions) {
 	cmd.Flags().StringVar(&opts.InstallID, "install-id", "", "Nuon install ID (falls back to NUON_INSTALL_ID)")
 	cmd.Flags().StringVar(&opts.InputsPath, "inputs", "", "Path to required JSON object of non-secret CloudFormation parameters")
-	cmd.Flags().StringVar(&opts.SecretsPath, "secrets", "", "Path to optional JSON object of secret-backed CloudFormation parameters")
+	cmd.Flags().StringVar(&opts.SecretsPath, "secrets", "", "Path to JSON object of secret-backed CloudFormation parameters (on stack updates, omitted or empty template secret values keep existing stack values)")
 	cmd.Flags().StringVar(&opts.Profile, "profile", "", "AWS shared config profile used for CloudFormation and account verification (optional)")
 	cmd.Flags().BoolVar(&opts.Watch, "watch", false, "Show live apply progress (spinner in TTY mode; plain text otherwise)")
 	cmd.Flags().BoolVar(&opts.DisableMaintenance, "disable-maintenance", false, "Set EnableRunnerMaintenance=false")

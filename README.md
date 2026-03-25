@@ -23,8 +23,12 @@ nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json
 # show live apply progress (spinner in TTY mode)
 nuon cf-stack install --watch --install-id inl_123 --inputs inputs.json
 
-# optional when your template uses secret-backed parameters
+# install create: provide required secret-backed parameters
 nuon cf-stack install --install-id inl_123 --inputs inputs.json --secrets secrets.json
+
+# stack update (`upgrade`, or `install` against an existing stack):
+# provide changed secrets only; omitted or empty template secret values keep existing values
+nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json --secrets rotated-secrets.json
 ```
 
 ## Run Locally
@@ -37,6 +41,9 @@ Use the helper script to run the extension with environment loaded from your Nuo
 
 # optional when needed
 ./scripts/run-local.sh install --install-id inl_123 --inputs inputs.json --secrets secrets.json
+
+# optional on upgrade when rotating secret values
+./scripts/run-local.sh upgrade --install-id inl_123 --inputs inputs.json --secrets rotated-secrets.json
 ```
 
 By default, the script reads `~/.nuon`. To use a different config file:
@@ -82,11 +89,17 @@ keeps plain text progress output.
 4. Verifies caller AWS account matches install stack account (when available).
 5. Applies CloudFormation stack (create or update) with parameters from:
    - `inputs.json` mapped to stack parameter names (for example `foo -> ParameterFoo`)
-   - optional `secrets.json`
+   - `secrets.json` (create: include required secrets; updates: include only changed secrets)
    - role toggle params (`EnableRunnerMaintenance`, `EnableRunnerProvision`, `EnableRunnerDeprovision`)
 
 Input keys are only sent when they match an actual template parameter name (directly or via `Parameter<PascalCase>`
 mapping). Unmatched inputs are omitted.
+
+For stack updates (`upgrade`, or `install` against an existing stack), template `NoEcho` parameters omitted from
+`--secrets` are sent with `UsePreviousValue=true` so CloudFormation keeps existing stack values.
+
+When a template `NoEcho` secret key is provided with an empty string on stack updates, it is treated as
+"keep existing value" (also sent as `UsePreviousValue=true`).
 
 ### Debug logging
 
@@ -97,3 +110,4 @@ For `install` and `upgrade`, debug logs include:
 - install id and install name
 - install stack id and stack status
 - omitted input keys that did not match stack template parameters
+- secret parameter handling (`updated from provided ...` vs `keeping existing stack value`)

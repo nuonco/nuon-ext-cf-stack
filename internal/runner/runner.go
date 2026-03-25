@@ -45,6 +45,11 @@ type installStackMeta struct {
 	AccountID    string
 }
 
+type templateParameterMetadata struct {
+	All    map[string]struct{}
+	Secret map[string]struct{}
+}
+
 func Run(ctx context.Context, w io.Writer, operation string, opts options.CommonOptions) error {
 	nuonEnv, err := config.LoadNuonEnv(nil)
 	if err != nil {
@@ -82,11 +87,16 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 		return err
 	}
 
-	templateParameters, err := fetchTemplateParameterSet(ctx, meta.TemplateURL)
+	templateMetadata, err := fetchTemplateParameterMetadata(ctx, meta.TemplateURL)
 	if err != nil {
 		return err
 	}
-	debug.Log("operation=%s template parameter count=%d", operation, len(templateParameters))
+	debug.Log(
+		"operation=%s template parameter count=%d secret parameter count=%d",
+		operation,
+		len(templateMetadata.All),
+		len(templateMetadata.Secret),
+	)
 
 	awsConfig, err := loadAWSConfig(ctx, meta.Region, opts.Profile)
 	if err != nil {
@@ -97,7 +107,27 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 		return err
 	}
 
-	parameters, err := buildStackParameters(opts.Inputs, opts.Secrets, opts.Roles, templateParameters)
+	existingStackParameters, stackExists, err := fetchExistingStackParameterSet(ctx, awsConfig, meta.StackName)
+	if err != nil {
+		return err
+	}
+	debug.Log(
+		"operation=%s stack exists=%t existing stack parameter count=%d",
+		operation,
+		stackExists,
+		len(existingStackParameters),
+	)
+
+	parameters, err := buildStackParameters(
+		operation,
+		opts.Inputs,
+		opts.Secrets,
+		opts.Roles,
+		templateMetadata.All,
+		templateMetadata.Secret,
+		existingStackParameters,
+		stackExists,
+	)
 	if err != nil {
 		return err
 	}
@@ -300,35 +330,44 @@ func stackConsoleURL(region, stackName string) string {
 	)
 }
 
-func fetchTemplateParameterSet(ctx context.Context, templateURL string) (map[string]struct{}, error) {
+func fetchTemplateParameterMetadata(ctx context.Context, templateURL string) (templateParameterMetadata, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, templateURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create template request: %w", err)
+		return templateParameterMetadata{}, fmt.Errorf("create template request: %w", err)
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("fetch template %s: %w", templateURL, err)
+		return templateParameterMetadata{}, fmt.Errorf("fetch template %s: %w", templateURL, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("fetch template %s: unexpected status %d", templateURL, resp.StatusCode)
+		return templateParameterMetadata{}, fmt.Errorf("fetch template %s: unexpected status %d", templateURL, resp.StatusCode)
 	}
 
 	var template struct {
-		Parameters map[string]json.RawMessage `json:"Parameters"`
+		Parameters map[string]struct {
+			NoEcho bool `json:"NoEcho"`
+		} `json:"Parameters"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&template); err != nil {
-		return nil, fmt.Errorf("decode template %s: %w", templateURL, err)
+		return templateParameterMetadata{}, fmt.Errorf("decode template %s: %w", templateURL, err)
 	}
 
-	set := make(map[string]struct{}, len(template.Parameters))
-	for key := range template.Parameters {
-		set[key] = struct{}{}
+	all := make(map[string]struct{}, len(template.Parameters))
+	secret := map[string]struct{}{}
+	for key, parameter := range template.Parameters {
+		all[key] = struct{}{}
+		if parameter.NoEcho {
+			secret[key] = struct{}{}
+		}
 	}
 
-	return set, nil
+	return templateParameterMetadata{
+		All:    all,
+		Secret: secret,
+	}, nil
 }
 
 func loadAWSConfig(ctx context.Context, region, profile string) (aws.Config, error) {
@@ -368,7 +407,42 @@ func verifyAWSAccount(ctx context.Context, awsConfig aws.Config, expectedAccount
 	return nil
 }
 
-func buildStackParameters(inputs, secrets map[string]any, roles options.RoleOptions, templateParameters map[string]struct{}) ([]cftypes.Parameter, error) {
+func fetchExistingStackParameterSet(ctx context.Context, awsConfig aws.Config, stackName string) (map[string]struct{}, bool, error) {
+	client := cloudformation.NewFromConfig(awsConfig)
+	output, err := client.DescribeStacks(ctx, &cloudformation.DescribeStacksInput{StackName: aws.String(stackName)})
+	if err != nil {
+		if isStackNotFoundError(err) {
+			return map[string]struct{}{}, false, nil
+		}
+		return nil, false, fmt.Errorf("describe stack %q for parameter reuse: %w", stackName, err)
+	}
+
+	if len(output.Stacks) == 0 {
+		return map[string]struct{}{}, false, nil
+	}
+
+	stack := output.Stacks[0]
+	keys := make(map[string]struct{}, len(stack.Parameters))
+	for _, parameter := range stack.Parameters {
+		key := strings.TrimSpace(aws.ToString(parameter.ParameterKey))
+		if key == "" {
+			continue
+		}
+		keys[key] = struct{}{}
+	}
+
+	return keys, true, nil
+}
+
+func buildStackParameters(
+	operation string,
+	inputs, secrets map[string]any,
+	roles options.RoleOptions,
+	templateParameters map[string]struct{},
+	templateSecretParameters map[string]struct{},
+	existingStackParameters map[string]struct{},
+	stackExists bool,
+) ([]cftypes.Parameter, error) {
 	merged := map[string]string{}
 	origin := map[string]string{}
 
@@ -380,25 +454,106 @@ func buildStackParameters(inputs, secrets map[string]any, roles options.RoleOpti
 	}
 
 	merged[enableRunnerMaintenanceParam] = strconv.FormatBool(roles.Maintenance)
+	origin[enableRunnerMaintenanceParam] = "roles"
 	merged[enableRunnerProvisionParam] = strconv.FormatBool(roles.Provision)
+	origin[enableRunnerProvisionParam] = "roles"
 	merged[enableRunnerDeprovisionParam] = strconv.FormatBool(roles.Deprovision)
+	origin[enableRunnerDeprovisionParam] = "roles"
 
-	keys := make([]string, 0, len(merged))
-	for key := range merged {
+	parametersByKey := make(map[string]cftypes.Parameter, len(merged)+len(templateSecretParameters))
+	for key, value := range merged {
+		parametersByKey[key] = cftypes.Parameter{
+			ParameterKey:   aws.String(key),
+			ParameterValue: aws.String(value),
+		}
+	}
+
+	if shouldReuseExistingSecretValues(operation, stackExists) {
+		applySecretParameterBehavior(parametersByKey, origin, templateSecretParameters, existingStackParameters, operation)
+	}
+
+	keys := make([]string, 0, len(parametersByKey))
+	for key := range parametersByKey {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 
 	params := make([]cftypes.Parameter, 0, len(keys))
 	for _, key := range keys {
-		value := merged[key]
-		params = append(params, cftypes.Parameter{
-			ParameterKey:   aws.String(key),
-			ParameterValue: aws.String(value),
-		})
+		params = append(params, parametersByKey[key])
 	}
 
 	return params, nil
+}
+
+func applySecretParameterBehavior(
+	parametersByKey map[string]cftypes.Parameter,
+	origin map[string]string,
+	templateSecretParameters map[string]struct{},
+	existingStackParameters map[string]struct{},
+	operation string,
+) {
+	secretKeys := make([]string, 0, len(templateSecretParameters))
+	for key := range templateSecretParameters {
+		secretKeys = append(secretKeys, key)
+	}
+	sort.Strings(secretKeys)
+
+	for _, key := range secretKeys {
+		if source, exists := origin[key]; exists {
+			parameter := parametersByKey[key]
+			if source == "secrets" && isEmptyStringParameterValue(parameter) {
+				if _, exists := existingStackParameters[key]; exists {
+					parametersByKey[key] = cftypes.Parameter{
+						ParameterKey:     aws.String(key),
+						UsePreviousValue: aws.Bool(true),
+					}
+					origin[key] = "existing-stack"
+					debug.Log("operation=%s secret parameter %q: empty value provided; keeping existing stack value", operation, key)
+					continue
+				}
+
+				debug.Log("operation=%s secret parameter %q: empty value provided but no existing stack value to keep", operation, key)
+				continue
+			}
+
+			debug.Log("operation=%s secret parameter %q: updated from provided %s", operation, key, source)
+			continue
+		}
+
+		if _, exists := existingStackParameters[key]; exists {
+			parametersByKey[key] = cftypes.Parameter{
+				ParameterKey:     aws.String(key),
+				UsePreviousValue: aws.Bool(true),
+			}
+			origin[key] = "existing-stack"
+			debug.Log("operation=%s secret parameter %q: keeping existing stack value", operation, key)
+			continue
+		}
+
+		debug.Log("operation=%s secret parameter %q: no provided value and no existing stack value to keep", operation, key)
+	}
+}
+
+func shouldReuseExistingSecretValues(operation string, stackExists bool) bool {
+	if isUpgradeOperation(operation) {
+		return true
+	}
+
+	// Install can be re-run against an existing stack, which uses UpdateStack semantics.
+	return stackExists
+}
+
+func isEmptyStringParameterValue(parameter cftypes.Parameter) bool {
+	if parameter.ParameterValue == nil {
+		return false
+	}
+
+	return *parameter.ParameterValue == ""
+}
+
+func isUpgradeOperation(operation string) bool {
+	return strings.EqualFold(strings.TrimSpace(operation), "upgrade")
 }
 
 func mergeInputParameters(target, origin map[string]string, inputs map[string]any, templateParameters map[string]struct{}) error {

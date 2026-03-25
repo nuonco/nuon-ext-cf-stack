@@ -17,10 +17,10 @@ func newInstallCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "install",
 		Short: "Install CF stack resources for an install",
-		Long:  "Install CloudFormation stack resources for a Nuon install. Requires --inputs JSON and supports optional --secrets JSON for secret-backed parameters.",
+		Long:  "Install CloudFormation stack resources for a Nuon install. Requires --inputs JSON. On first create, provide required secret-backed parameters via --secrets. When install targets an existing stack, omitted or empty template secret values keep existing stack values.",
 		Example: "  nuon cf-stack install --install-id inl_123 --inputs inputs.json\n" +
 			"  nuon cf-stack install --install-id inl_123 --inputs inputs.json --secrets secrets.json\n" +
-			"  nuon cf-stack install --install-id inl_123 --inputs inputs.json --disable-deprovision --watch",
+			"  NUON_DEBUG=true nuon cf-stack install --install-id inl_123 --inputs inputs.json --disable-deprovision --watch",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts, err := options.Normalize(raw, os.Getenv)
 			if err != nil {

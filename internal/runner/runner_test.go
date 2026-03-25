@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/nuonco/nuon/sdks/nuon-go/models"
 
 	"github.com/nuonco/nuon-ext-cf-stack/internal/options"
@@ -47,12 +48,19 @@ func TestLatestInstallStackVersion(t *testing.T) {
 
 func TestBuildStackParametersIncludesRoleFlags(t *testing.T) {
 	params, err := buildStackParameters(
+		"install",
 		map[string]any{"foo": "value", "ignored": "skip"},
 		map[string]any{"SecretA": "secret"},
 		options.RoleOptions{Maintenance: true, Provision: false, Deprovision: true},
 		map[string]struct{}{
 			"ParameterFoo": {},
+			"SecretA":      {},
 		},
+		map[string]struct{}{
+			"SecretA": {},
+		},
+		nil,
+		false,
 	)
 	if err != nil {
 		t.Fatalf("expected no error, got %v", err)
@@ -82,12 +90,16 @@ func TestBuildStackParametersIncludesRoleFlags(t *testing.T) {
 
 func TestBuildStackParametersRejectsDuplicateKeys(t *testing.T) {
 	_, err := buildStackParameters(
+		"install",
 		map[string]any{"shared": "input"},
 		map[string]any{"ParameterShared": "secret"},
 		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
 		map[string]struct{}{
 			"ParameterShared": {},
 		},
+		nil,
+		nil,
+		false,
 	)
 	if err == nil {
 		t.Fatalf("expected duplicate parameter error")
@@ -95,4 +107,153 @@ func TestBuildStackParametersRejectsDuplicateKeys(t *testing.T) {
 	if !strings.Contains(err.Error(), "duplicate parameter key") {
 		t.Fatalf("unexpected error: %v", err)
 	}
+}
+
+func TestBuildStackParametersUpgradeKeepsOmittedSecretValues(t *testing.T) {
+	params, err := buildStackParameters(
+		"upgrade",
+		map[string]any{"foo": "value"},
+		map[string]any{},
+		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		map[string]struct{}{
+			"ParameterFoo":      {},
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	parameterByKey := parametersByKey(params)
+	secret, ok := parameterByKey["GithubAppKeyParam"]
+	if !ok {
+		t.Fatalf("expected GithubAppKeyParam to be included")
+	}
+	if secret.UsePreviousValue == nil || !*secret.UsePreviousValue {
+		t.Fatalf("expected GithubAppKeyParam to use previous value, got %#v", secret)
+	}
+	if secret.ParameterValue != nil {
+		t.Fatalf("expected no direct parameter value for GithubAppKeyParam, got %#v", secret.ParameterValue)
+	}
+}
+
+func TestBuildStackParametersUpgradeUsesProvidedSecretValues(t *testing.T) {
+	params, err := buildStackParameters(
+		"upgrade",
+		map[string]any{"foo": "value"},
+		map[string]any{"GithubAppKeyParam": "updated-secret"},
+		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		map[string]struct{}{
+			"ParameterFoo":      {},
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	parameterByKey := parametersByKey(params)
+	secret, ok := parameterByKey["GithubAppKeyParam"]
+	if !ok {
+		t.Fatalf("expected GithubAppKeyParam to be included")
+	}
+	if secret.ParameterValue == nil || *secret.ParameterValue != "updated-secret" {
+		t.Fatalf("expected provided secret value, got %#v", secret.ParameterValue)
+	}
+	if secret.UsePreviousValue != nil && *secret.UsePreviousValue {
+		t.Fatalf("expected provided secret value to override use-previous behavior")
+	}
+}
+
+func TestBuildStackParametersInstallKeepsOmittedSecretValuesWhenStackExists(t *testing.T) {
+	params, err := buildStackParameters(
+		"install",
+		map[string]any{"foo": "value"},
+		map[string]any{},
+		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		map[string]struct{}{
+			"ParameterFoo":      {},
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	parameterByKey := parametersByKey(params)
+	secret, ok := parameterByKey["GithubAppKeyParam"]
+	if !ok {
+		t.Fatalf("expected GithubAppKeyParam to be included")
+	}
+	if secret.UsePreviousValue == nil || !*secret.UsePreviousValue {
+		t.Fatalf("expected GithubAppKeyParam to use previous value, got %#v", secret)
+	}
+}
+
+func TestBuildStackParametersInstallTreatsEmptySecretAsKeepExisting(t *testing.T) {
+	params, err := buildStackParameters(
+		"install",
+		map[string]any{"foo": "value"},
+		map[string]any{"GithubAppKeyParam": ""},
+		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		map[string]struct{}{
+			"ParameterFoo":      {},
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		map[string]struct{}{
+			"GithubAppKeyParam": {},
+		},
+		true,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	parameterByKey := parametersByKey(params)
+	secret, ok := parameterByKey["GithubAppKeyParam"]
+	if !ok {
+		t.Fatalf("expected GithubAppKeyParam to be included")
+	}
+	if secret.UsePreviousValue == nil || !*secret.UsePreviousValue {
+		t.Fatalf("expected GithubAppKeyParam to use previous value when empty secret was provided, got %#v", secret)
+	}
+	if secret.ParameterValue != nil {
+		t.Fatalf("expected no direct parameter value when empty secret was provided, got %#v", secret.ParameterValue)
+	}
+}
+
+func parametersByKey(params []cftypes.Parameter) map[string]cftypes.Parameter {
+	indexed := make(map[string]cftypes.Parameter, len(params))
+	for _, parameter := range params {
+		if parameter.ParameterKey == nil {
+			continue
+		}
+		indexed[*parameter.ParameterKey] = parameter
+	}
+
+	return indexed
 }

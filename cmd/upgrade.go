@@ -17,7 +17,7 @@ func newUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade CF stack resources for an install",
-		Long:  "Upgrade CloudFormation stack resources for a Nuon install. Requires --inputs JSON and supports optional --secrets JSON for secret-backed parameters.",
+		Long:  "Upgrade CloudFormation stack resources for a Nuon install. Requires --inputs JSON. --secrets is optional: provided secret keys are updated, and omitted or empty template secret values keep existing stack values.",
 		Example: "  nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json\n" +
 			"  nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json --secrets secrets.json\n" +
 			"  NUON_DEBUG=true nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json --disable-deprovision",
