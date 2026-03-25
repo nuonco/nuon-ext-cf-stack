@@ -39,3 +39,8 @@ func Log(format string, args ...any) {
 
 	_, _ = fmt.Fprintf(os.Stderr, "[debug] "+format+"\n", args...)
 }
+
+// Info prints informational output to stderr regardless of NUON_DEBUG.
+func Info(format string, args ...any) {
+	_, _ = fmt.Fprintf(os.Stderr, "[info] "+format+"\n", args...)
+}

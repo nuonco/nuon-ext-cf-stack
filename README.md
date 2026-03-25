@@ -109,5 +109,7 @@ For `install` and `upgrade`, debug logs include:
 
 - install id and install name
 - install stack id and stack status
-- omitted input keys that did not match stack template parameters
-- secret parameter handling (`updated from provided ...` vs `keeping existing stack value`)
+- secret parameter handling for provided values and missing prior values (`updated from provided ...` and `no provided value ...`)
+
+The extension always prints non-debug `[info]` stderr lines for omitted input keys and secret keys that keep existing
+stack values.

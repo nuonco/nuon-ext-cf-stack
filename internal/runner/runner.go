@@ -509,7 +509,7 @@ func applySecretParameterBehavior(
 						UsePreviousValue: aws.Bool(true),
 					}
 					origin[key] = "existing-stack"
-					debug.Log("operation=%s secret parameter %q: empty value provided; keeping existing stack value", operation, key)
+					debug.Info("operation=%s secret parameter %q: empty value provided; keeping existing stack value", operation, key)
 					continue
 				}
 
@@ -527,7 +527,7 @@ func applySecretParameterBehavior(
 				UsePreviousValue: aws.Bool(true),
 			}
 			origin[key] = "existing-stack"
-			debug.Log("operation=%s secret parameter %q: keeping existing stack value", operation, key)
+			debug.Info("operation=%s secret parameter %q: keeping existing stack value", operation, key)
 			continue
 		}
 
@@ -572,7 +572,7 @@ func mergeInputParameters(target, origin map[string]string, inputs map[string]an
 
 		parameterKey, found, candidates := resolveInputParameterKey(key, templateParameters)
 		if !found {
-			debug.Log("omitting input %q: no matching stack parameter (candidates=%s)", key, strings.Join(candidates, ","))
+			debug.Info("omitting input %q: no matching stack parameter (candidates=%s)", key, strings.Join(candidates, ","))
 			continue
 		}
 
