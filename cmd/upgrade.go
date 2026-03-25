@@ -17,6 +17,10 @@ func newUpgradeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade CF stack resources for an install",
+		Long:  "Upgrade CloudFormation stack resources for a Nuon install. Requires --inputs JSON and supports optional --secrets JSON for secret-backed parameters.",
+		Example: "  nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json\n" +
+			"  nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json --secrets secrets.json\n" +
+			"  NUON_DEBUG=true nuon cf-stack upgrade --install-id inl_123 --inputs inputs.json --disable-deprovision",
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			opts, err := options.Normalize(raw, os.Getenv)
 			if err != nil {

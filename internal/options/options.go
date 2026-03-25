@@ -39,14 +39,14 @@ type CommonOptions struct {
 }
 
 func BindCommonFlags(cmd *cobra.Command, opts *RawCommonOptions) {
-	cmd.Flags().StringVar(&opts.InstallID, "install-id", "", "Install ID (falls back to NUON_INSTALL_ID)")
-	cmd.Flags().StringVar(&opts.InputsPath, "inputs", "", "Path to inputs JSON file")
-	cmd.Flags().StringVar(&opts.SecretsPath, "secrets", "", "Path to secrets JSON file (optional)")
-	cmd.Flags().StringVar(&opts.Profile, "profile", "", "AWS shared config profile (optional)")
-	cmd.Flags().BoolVar(&opts.Watch, "watch", false, "Show a live spinner while CloudFormation applies changes")
-	cmd.Flags().BoolVar(&opts.DisableMaintenance, "disable-maintenance", false, "Disable maintenance role")
-	cmd.Flags().BoolVar(&opts.DisableProvision, "disable-provision", false, "Disable provision role")
-	cmd.Flags().BoolVar(&opts.DisableDeprovision, "disable-deprovision", false, "Disable deprovision role")
+	cmd.Flags().StringVar(&opts.InstallID, "install-id", "", "Nuon install ID (falls back to NUON_INSTALL_ID)")
+	cmd.Flags().StringVar(&opts.InputsPath, "inputs", "", "Path to required JSON object of non-secret CloudFormation parameters")
+	cmd.Flags().StringVar(&opts.SecretsPath, "secrets", "", "Path to optional JSON object of secret-backed CloudFormation parameters")
+	cmd.Flags().StringVar(&opts.Profile, "profile", "", "AWS shared config profile used for CloudFormation and account verification (optional)")
+	cmd.Flags().BoolVar(&opts.Watch, "watch", false, "Show live apply progress (spinner in TTY mode; plain text otherwise)")
+	cmd.Flags().BoolVar(&opts.DisableMaintenance, "disable-maintenance", false, "Set EnableRunnerMaintenance=false")
+	cmd.Flags().BoolVar(&opts.DisableProvision, "disable-provision", false, "Set EnableRunnerProvision=false")
+	cmd.Flags().BoolVar(&opts.DisableDeprovision, "disable-deprovision", false, "Set EnableRunnerDeprovision=false")
 }
 
 func Normalize(raw RawCommonOptions, getenv func(string) string) (CommonOptions, error) {
