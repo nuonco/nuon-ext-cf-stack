@@ -11,9 +11,7 @@ import (
 const installIDEnvVar = "NUON_INSTALL_ID"
 
 type RoleOptions struct {
-	Maintenance bool `json:"maintenance"`
-	Provision   bool `json:"provision"`
-	Deprovision bool `json:"deprovision"`
+	Disabled []string `json:"disabled"`
 }
 
 type RawCommonOptions struct {
@@ -22,6 +20,7 @@ type RawCommonOptions struct {
 	SecretsPath        string
 	Profile            string
 	Watch              bool
+	DisableRoles       []string
 	DisableMaintenance bool
 	DisableProvision   bool
 	DisableDeprovision bool
@@ -44,9 +43,10 @@ func BindCommonFlags(cmd *cobra.Command, opts *RawCommonOptions) {
 	cmd.Flags().StringVar(&opts.SecretsPath, "secrets", "", "Path to JSON object of secret-backed CloudFormation parameters (on stack updates, omitted or empty template secret values keep existing stack values)")
 	cmd.Flags().StringVar(&opts.Profile, "profile", "", "AWS shared config profile used for CloudFormation and account verification (optional)")
 	cmd.Flags().BoolVar(&opts.Watch, "watch", false, "Show live apply progress (spinner in TTY mode; plain text otherwise)")
-	cmd.Flags().BoolVar(&opts.DisableMaintenance, "disable-maintenance", false, "Set EnableRunnerMaintenance=false")
-	cmd.Flags().BoolVar(&opts.DisableProvision, "disable-provision", false, "Set EnableRunnerProvision=false")
-	cmd.Flags().BoolVar(&opts.DisableDeprovision, "disable-deprovision", false, "Set EnableRunnerDeprovision=false")
+	cmd.Flags().StringArrayVar(&opts.DisableRoles, "disable-role", nil, "Disable an assumable role by label, alias, or Enable* parameter name (repeatable)")
+	cmd.Flags().BoolVar(&opts.DisableMaintenance, "disable-maintenance", false, "Alias for --disable-role maintenance")
+	cmd.Flags().BoolVar(&opts.DisableProvision, "disable-provision", false, "Alias for --disable-role provision")
+	cmd.Flags().BoolVar(&opts.DisableDeprovision, "disable-deprovision", false, "Alias for --disable-role deprovision")
 }
 
 func Normalize(raw RawCommonOptions, getenv func(string) string) (CommonOptions, error) {
@@ -69,22 +69,44 @@ func Normalize(raw RawCommonOptions, getenv func(string) string) (CommonOptions,
 
 	secretsPath := strings.TrimSpace(raw.SecretsPath)
 
-	roles := RoleOptions{
-		Maintenance: !raw.DisableMaintenance,
-		Provision:   !raw.DisableProvision,
-		Deprovision: !raw.DisableDeprovision,
-	}
-
-	if !roles.Maintenance && !roles.Provision && !roles.Deprovision {
-		return CommonOptions{}, fmt.Errorf("at least one role must remain enabled")
-	}
-
 	return CommonOptions{
 		InstallID:   installID,
 		InputsPath:  inputsPath,
 		SecretsPath: secretsPath,
 		Profile:     strings.TrimSpace(raw.Profile),
 		Watch:       raw.Watch,
-		Roles:       roles,
+		Roles: RoleOptions{
+			Disabled: normalizeDisabledRoles(raw),
+		},
 	}, nil
+}
+
+func normalizeDisabledRoles(raw RawCommonOptions) []string {
+	names := append([]string{}, raw.DisableRoles...)
+	if raw.DisableMaintenance {
+		names = append(names, "maintenance")
+	}
+	if raw.DisableProvision {
+		names = append(names, "provision")
+	}
+	if raw.DisableDeprovision {
+		names = append(names, "deprovision")
+	}
+
+	seen := map[string]struct{}{}
+	disabled := make([]string, 0, len(names))
+	for _, name := range names {
+		trimmed := strings.TrimSpace(name)
+		if trimmed == "" {
+			continue
+		}
+		key := strings.ToLower(trimmed)
+		if _, exists := seen[key]; exists {
+			continue
+		}
+		seen[key] = struct{}{}
+		disabled = append(disabled, trimmed)
+	}
+
+	return disabled
 }
