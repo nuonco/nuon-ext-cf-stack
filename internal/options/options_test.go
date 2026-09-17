@@ -1,6 +1,7 @@
 package options
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -25,8 +26,8 @@ func TestNormalizeDefaults(t *testing.T) {
 		t.Fatalf("expected install ID from env, got %q", opts.InstallID)
 	}
 
-	if !opts.Roles.Maintenance || !opts.Roles.Provision || !opts.Roles.Deprovision {
-		t.Fatalf("expected all roles enabled by default, got %+v", opts.Roles)
+	if len(opts.Roles.Disabled) != 0 {
+		t.Fatalf("expected no roles disabled by default, got %+v", opts.Roles.Disabled)
 	}
 }
 
@@ -63,6 +64,7 @@ func TestNormalizeRoleToggles(t *testing.T) {
 		InputsPath:         "inputs.json",
 		SecretsPath:        "secrets.json",
 		DisableMaintenance: true,
+		DisableRoles:       []string{" dynamodb-operations ", "deprovision", "dynamodb-operations"},
 	}
 
 	opts, err := Normalize(raw, nil)
@@ -70,15 +72,13 @@ func TestNormalizeRoleToggles(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if opts.Roles.Maintenance {
-		t.Fatalf("expected maintenance role disabled")
-	}
-	if !opts.Roles.Provision || !opts.Roles.Deprovision {
-		t.Fatalf("expected provision and deprovision to remain enabled, got %+v", opts.Roles)
+	want := []string{"dynamodb-operations", "deprovision", "maintenance"}
+	if !reflect.DeepEqual(opts.Roles.Disabled, want) {
+		t.Fatalf("expected disabled roles %v, got %v", want, opts.Roles.Disabled)
 	}
 }
 
-func TestNormalizeRejectsAllRolesDisabled(t *testing.T) {
+func TestNormalizeAllowsAllFirstClassRolesDisabled(t *testing.T) {
 	raw := RawCommonOptions{
 		InstallID:          "inl_123",
 		InputsPath:         "inputs.json",
@@ -88,12 +88,13 @@ func TestNormalizeRejectsAllRolesDisabled(t *testing.T) {
 		DisableDeprovision: true,
 	}
 
-	_, err := Normalize(raw, nil)
-	if err == nil {
-		t.Fatalf("expected error when all roles are disabled")
+	opts, err := Normalize(raw, nil)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
 	}
-	if !strings.Contains(err.Error(), "at least one role") {
-		t.Fatalf("expected role validation error, got %v", err)
+	want := []string{"maintenance", "provision", "deprovision"}
+	if !reflect.DeepEqual(opts.Roles.Disabled, want) {
+		t.Fatalf("expected disabled roles %v, got %v", want, opts.Roles.Disabled)
 	}
 }
 

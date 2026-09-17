@@ -54,7 +54,18 @@ NUON_CONFIG_FILE=~/.nuon-staging ./scripts/run-local.sh install --install-id inl
 
 ### Role flags
 
-All roles are enabled by default. Disable individual roles with:
+All assumable roles in the install template are enabled by default, including first-class runner roles and custom roles such as `dynamodb-operations`. Disable individual roles with a repeatable flag:
+
+```bash
+nuon cf-stack install --install-id inl_123 --inputs inputs.json \
+  --disable-role deprovision \
+  --disable-role dynamodb-operations \
+  --disable-role rds-aurora-operations
+```
+
+`--disable-role` accepts the CloudFormation parameter label (`dynamodb-operations`), a first-class alias (`maintenance`, `provision`, `deprovision`), or the `Enable*` parameter name.
+
+These flags remain aliases for the first-class roles:
 
 - `--disable-maintenance`
 - `--disable-provision`
@@ -90,7 +101,7 @@ keeps plain text progress output.
 5. Applies CloudFormation stack (create or update) with parameters from:
    - `inputs.json` mapped to stack parameter names (for example `foo -> ParameterFoo`)
    - `secrets.json` (create: include required secrets; updates: include only changed secrets)
-   - role toggle params (`EnableRunnerMaintenance`, `EnableRunnerProvision`, `EnableRunnerDeprovision`)
+   - role toggle params (`EnableRunnerMaintenance`, `EnableRunnerProvision`, `EnableRunnerDeprovision`, plus any custom `Enable*` params for assumable IAM roles)
 
 Input keys are only sent when they match an actual template parameter name (directly or via `Parameter<PascalCase>`
 mapping). Unmatched inputs are omitted.

@@ -48,6 +48,7 @@ type installStackMeta struct {
 type templateParameterMetadata struct {
 	All    map[string]struct{}
 	Secret map[string]struct{}
+	Roles  []assumableRole
 }
 
 func Run(ctx context.Context, w io.Writer, operation string, opts options.CommonOptions) error {
@@ -92,11 +93,17 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 		return err
 	}
 	debug.Log(
-		"operation=%s template parameter count=%d secret parameter count=%d",
+		"operation=%s template parameter count=%d secret parameter count=%d assumable role count=%d",
 		operation,
 		len(templateMetadata.All),
 		len(templateMetadata.Secret),
+		len(templateMetadata.Roles),
 	)
+
+	roleValues, err := resolveRoleParameterValues(templateMetadata.Roles, opts.Roles.Disabled)
+	if err != nil {
+		return err
+	}
 
 	awsConfig, err := loadAWSConfig(ctx, meta.Region, opts.Profile)
 	if err != nil {
@@ -122,7 +129,7 @@ func Run(ctx context.Context, w io.Writer, operation string, opts options.Common
 		operation,
 		opts.Inputs,
 		opts.Secrets,
-		opts.Roles,
+		roleValues,
 		templateMetadata.All,
 		templateMetadata.Secret,
 		existingStackParameters,
@@ -346,11 +353,7 @@ func fetchTemplateParameterMetadata(ctx context.Context, templateURL string) (te
 		return templateParameterMetadata{}, fmt.Errorf("fetch template %s: unexpected status %d", templateURL, resp.StatusCode)
 	}
 
-	var template struct {
-		Parameters map[string]struct {
-			NoEcho bool `json:"NoEcho"`
-		} `json:"Parameters"`
-	}
+	var template decodedTemplate
 	if err := json.NewDecoder(resp.Body).Decode(&template); err != nil {
 		return templateParameterMetadata{}, fmt.Errorf("decode template %s: %w", templateURL, err)
 	}
@@ -367,6 +370,7 @@ func fetchTemplateParameterMetadata(ctx context.Context, templateURL string) (te
 	return templateParameterMetadata{
 		All:    all,
 		Secret: secret,
+		Roles:  discoverAssumableRoles(template),
 	}, nil
 }
 
@@ -437,7 +441,7 @@ func fetchExistingStackParameterSet(ctx context.Context, awsConfig aws.Config, s
 func buildStackParameters(
 	operation string,
 	inputs, secrets map[string]any,
-	roles options.RoleOptions,
+	roles map[string]bool,
 	templateParameters map[string]struct{},
 	templateSecretParameters map[string]struct{},
 	existingStackParameters map[string]struct{},
@@ -453,12 +457,15 @@ func buildStackParameters(
 		return nil, err
 	}
 
-	merged[enableRunnerMaintenanceParam] = strconv.FormatBool(roles.Maintenance)
-	origin[enableRunnerMaintenanceParam] = "roles"
-	merged[enableRunnerProvisionParam] = strconv.FormatBool(roles.Provision)
-	origin[enableRunnerProvisionParam] = "roles"
-	merged[enableRunnerDeprovisionParam] = strconv.FormatBool(roles.Deprovision)
-	origin[enableRunnerDeprovisionParam] = "roles"
+	roleKeys := make([]string, 0, len(roles))
+	for key := range roles {
+		roleKeys = append(roleKeys, key)
+	}
+	sort.Strings(roleKeys)
+	for _, key := range roleKeys {
+		merged[key] = strconv.FormatBool(roles[key])
+		origin[key] = "roles"
+	}
 
 	parametersByKey := make(map[string]cftypes.Parameter, len(merged)+len(templateSecretParameters))
 	for key, value := range merged {

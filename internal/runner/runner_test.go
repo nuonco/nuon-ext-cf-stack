@@ -6,8 +6,6 @@ import (
 
 	cftypes "github.com/aws/aws-sdk-go-v2/service/cloudformation/types"
 	"github.com/nuonco/nuon/sdks/nuon-go/models"
-
-	"github.com/nuonco/nuon-ext-cf-stack/internal/options"
 )
 
 func TestQuickCreateValue(t *testing.T) {
@@ -51,7 +49,11 @@ func TestBuildStackParametersIncludesRoleFlags(t *testing.T) {
 		"install",
 		map[string]any{"foo": "value", "ignored": "skip"},
 		map[string]any{"SecretA": "secret"},
-		options.RoleOptions{Maintenance: true, Provision: false, Deprovision: true},
+		map[string]bool{
+			enableRunnerMaintenanceParam: true,
+			enableRunnerProvisionParam:   false,
+			enableRunnerDeprovisionParam: true,
+		},
 		map[string]struct{}{
 			"ParameterFoo": {},
 			"SecretA":      {},
@@ -93,7 +95,7 @@ func TestBuildStackParametersRejectsDuplicateKeys(t *testing.T) {
 		"install",
 		map[string]any{"shared": "input"},
 		map[string]any{"ParameterShared": "secret"},
-		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		enabledFirstClassRoles(),
 		map[string]struct{}{
 			"ParameterShared": {},
 		},
@@ -114,7 +116,7 @@ func TestBuildStackParametersUpgradeKeepsOmittedSecretValues(t *testing.T) {
 		"upgrade",
 		map[string]any{"foo": "value"},
 		map[string]any{},
-		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		enabledFirstClassRoles(),
 		map[string]struct{}{
 			"ParameterFoo":      {},
 			"GithubAppKeyParam": {},
@@ -149,7 +151,7 @@ func TestBuildStackParametersUpgradeUsesProvidedSecretValues(t *testing.T) {
 		"upgrade",
 		map[string]any{"foo": "value"},
 		map[string]any{"GithubAppKeyParam": "updated-secret"},
-		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		enabledFirstClassRoles(),
 		map[string]struct{}{
 			"ParameterFoo":      {},
 			"GithubAppKeyParam": {},
@@ -184,7 +186,7 @@ func TestBuildStackParametersInstallKeepsOmittedSecretValuesWhenStackExists(t *t
 		"install",
 		map[string]any{"foo": "value"},
 		map[string]any{},
-		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		enabledFirstClassRoles(),
 		map[string]struct{}{
 			"ParameterFoo":      {},
 			"GithubAppKeyParam": {},
@@ -216,7 +218,7 @@ func TestBuildStackParametersInstallTreatsEmptySecretAsKeepExisting(t *testing.T
 		"install",
 		map[string]any{"foo": "value"},
 		map[string]any{"GithubAppKeyParam": ""},
-		options.RoleOptions{Maintenance: true, Provision: true, Deprovision: true},
+		enabledFirstClassRoles(),
 		map[string]struct{}{
 			"ParameterFoo":      {},
 			"GithubAppKeyParam": {},
@@ -243,6 +245,14 @@ func TestBuildStackParametersInstallTreatsEmptySecretAsKeepExisting(t *testing.T
 	}
 	if secret.ParameterValue != nil {
 		t.Fatalf("expected no direct parameter value when empty secret was provided, got %#v", secret.ParameterValue)
+	}
+}
+
+func enabledFirstClassRoles() map[string]bool {
+	return map[string]bool{
+		enableRunnerMaintenanceParam: true,
+		enableRunnerProvisionParam:   true,
+		enableRunnerDeprovisionParam: true,
 	}
 }
 
